@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KOSPI / KOSDAQ 주봉 RSI + MACD 골든크로스 스캐너</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Apple SD Gothic Neo, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 32px 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    header .badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: #1e40af;
+      color: #bfdbfe;
+      margin-bottom: 3px;
+    }
+
+    .meta {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin-bottom: 28px;
+    }
+
+    /* ── 요약 카드 ── */
+    .summary {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 18px 24px;
+      min-width: 160px;
+      flex: 1;
+    }
+
+    .card .label {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 1.9rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .card .sub {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+
+    .card.kospi .value  { color: #60a5fa; }
+    .card.kosdaq .value { color: #34d399; }
+    .card.total .value  { color: #f472b6; }
+
+    /* ── 필터 바 ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar input {
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      padding: 8px 14px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+      width: 220px;
+      outline: none;
+    }
+
+    .toolbar input::placeholder { color: #475569; }
+    .toolbar input:focus { border-color: #3b82f6; }
+
+    .filter-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid #2d3348;
+      background: #1e2330;
+      color: #94a3b8;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .filter-btn:hover,
+    .filter-btn.active { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+
+    .toolbar .spacer { flex: 1; }
+
+    .dl-btn {
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      background: #16a34a;
+      color: #fff;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background .15s;
+    }
+
+    .dl-btn:hover { background: #15803d; }
+
+    /* ── 테이블 ── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid #2d3348;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    thead th {
+      background: #161b27;
+      padding: 13px 16px;
+      text-align: left;
+      font-weight: 600;
+      color: #64748b;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border-bottom: 1px solid #2d3348;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    thead th:hover { color: #94a3b8; }
+
+    thead th .sort-icon { margin-left: 4px; opacity: .5; }
+
+    tbody tr {
+      border-bottom: 1px solid #1e2330;
+      transition: background .1s;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #1a2035; }
+
+    tbody td {
+      padding: 13px 16px;
+      color: #cbd5e1;
+    }
+
+    .market-badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .market-badge.kospi  { background: #1e3a8a; color: #93c5fd; }
+    .market-badge.kosdaq { background: #064e3b; color: #6ee7b7; }
+
+    .ticker { color: #94a3b8; font-size: 0.78rem; }
+
+    .name { font-weight: 600; color: #e2e8f0; }
+
+    .signal-date { color: #f59e0b; font-size: 0.82rem; }
+
+    .price { font-weight: 600; text-align: right; }
+
+    .rsi-val  { color: #818cf8; text-align: right; }
+    .macd-val { color: #fb923c; text-align: right; }
+
+    .gc-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e88;
+      margin-right: 6px;
+    }
+
+    .volume { color: #64748b; text-align: right; }
+
+    /* ── 페이지네이션 ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+
+    .pagination button {
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 6px;
+      color: #94a3b8;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .pagination button:hover,
+    .pagination button.active { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+
+    /* ── 하단 ── */
+    footer {
+      margin-top: 40px;
+      font-size: 0.75rem;
+      color: #334155;
+      text-align: center;
+    }
+
+    /* ── 스캔 진행 표시 (mock) ── */
+    .scan-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 10px;
+      padding: 12px 18px;
+      margin-bottom: 24px;
+      font-size: 0.82rem;
+    }
+
+    .scan-bar .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 1.4s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .3; }
+    }
+
+    .progress-outer {
+      flex: 1;
+      height: 6px;
+      background: #0f1117;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-inner {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #3b82f6, #22c55e);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>KOSPI / KOSDAQ 주봉 RSI + MACD 골든크로스 스캐너</h1>
+  <span class="badge">WEEKLY</span>
+</header>
+<p class="meta">기준일: 2026-05-09 &nbsp;|&nbsp; 최근 31일 신호 &nbsp;|&nbsp; RSI(14) × MACD(12,26,9) 동시 골든크로스</p>
+
+<!-- 스캔 완료 표시 -->
+<div class="scan-bar">
+  <div class="dot"></div>
+  <span style="color:#94a3b8">스캔 완료</span>
+  <span style="color:#64748b">KOSPI 934종목 · KOSDAQ 1,718종목 검색</span>
+  <div class="progress-outer"><div class="progress-inner"></div></div>
+  <span style="color:#22c55e;font-weight:600">신호 종목 18개</span>
+</div>
+
+<!-- 요약 카드 -->
+<div class="summary">
+  <div class="card total">
+    <div class="label">전체 신호</div>
+    <div class="value">18</div>
+    <div class="sub">RSI + MACD 동시 골든크로스</div>
+  </div>
+  <div class="card kospi">
+    <div class="label">KOSPI</div>
+    <div class="value">7</div>
+    <div class="sub">유가증권시장</div>
+  </div>
+  <div class="card kosdaq">
+    <div class="label">KOSDAQ</div>
+    <div class="value">11</div>
+    <div class="sub">코스닥시장</div>
+  </div>
+  <div class="card" style="">
+    <div class="label">최신 신호일</div>
+    <div class="value" style="font-size:1.3rem;color:#f472b6">2026-05-08</div>
+    <div class="sub">직전 주봉 기준</div>
+  </div>
+</div>
+
+<!-- 필터 / 툴바 -->
+<div class="toolbar">
+  <input type="text" placeholder="🔍  종목명 / 코드 검색…" />
+  <button class="filter-btn active">전체</button>
+  <button class="filter-btn">KOSPI</button>
+  <button class="filter-btn">KOSDAQ</button>
+  <div class="spacer"></div>
+  <button class="dl-btn">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v13M5 14l7 7 7-7"/><path d="M3 21h18"/></svg>
+    Excel 다운로드
+  </button>
+</div>
+
+<!-- 결과 테이블 -->
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>시장</th>
+        <th>종목코드 <span class="sort-icon">↕</span></th>
+        <th>종목명 <span class="sort-icon">↕</span></th>
+        <th>신호일 <span class="sort-icon">↓</span></th>
+        <th style="text-align:right">종가 <span class="sort-icon">↕</span></th>
+        <th style="text-align:right">RSI</th>
+        <th style="text-align:right">RSI 시그널</th>
+        <th style="text-align:right">MACD</th>
+        <th style="text-align:right">MACD 시그널</th>
+        <th style="text-align:right">거래량</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="market-badge kospi">KOSPI</span></td>
+        <td class="ticker">005930</td>
+        <td class="name"><span class="gc-dot"></span>삼성전자</td>
+        <td class="signal-date">2026-05-08</td>
+        <td class="price">78,400</td>
+        <td class="rsi-val">53.21</td>
+        <td class="rsi-val">50.87</td>
+        <td class="macd-val">124.50</td>
+        <td class="macd-val">98.33</td>
+        <td class="volume">32,847,201</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kosdaq">KOSDAQ</span></td>
+        <td class="ticker">247540</td>
+        <td class="name"><span class="gc-dot"></span>에코프로비엠</td>
+        <td class="signal-date">2026-05-08</td>
+        <td class="price">134,200</td>
+        <td class="rsi-val">48.76</td>
+        <td class="rsi-val">44.12</td>
+        <td class="macd-val">-312.40</td>
+        <td class="macd-val">-380.15</td>
+        <td class="volume">2,104,883</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kospi">KOSPI</span></td>
+        <td class="ticker">000660</td>
+        <td class="name"><span class="gc-dot"></span>SK하이닉스</td>
+        <td class="signal-date">2026-05-08</td>
+        <td class="price">192,500</td>
+        <td class="rsi-val">61.44</td>
+        <td class="rsi-val">57.90</td>
+        <td class="macd-val">1,843.20</td>
+        <td class="macd-val">1,610.77</td>
+        <td class="volume">8,391,024</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kosdaq">KOSDAQ</span></td>
+        <td class="ticker">035900</td>
+        <td class="name"><span class="gc-dot"></span>JYP Ent.</td>
+        <td class="signal-date">2026-05-02</td>
+        <td class="price">58,300</td>
+        <td class="rsi-val">44.88</td>
+        <td class="rsi-val">41.02</td>
+        <td class="macd-val">-89.70</td>
+        <td class="macd-val">-134.21</td>
+        <td class="volume">914,552</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kospi">KOSPI</span></td>
+        <td class="ticker">051910</td>
+        <td class="name"><span class="gc-dot"></span>LG화학</td>
+        <td class="signal-date">2026-05-02</td>
+        <td class="price">312,000</td>
+        <td class="rsi-val">42.15</td>
+        <td class="rsi-val">39.88</td>
+        <td class="macd-val">-1,204.30</td>
+        <td class="macd-val">-1,589.44</td>
+        <td class="volume">1,023,771</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kosdaq">KOSDAQ</span></td>
+        <td class="ticker">086900</td>
+        <td class="name"><span class="gc-dot"></span>메디오젠</td>
+        <td class="signal-date">2026-05-02</td>
+        <td class="price">14,850</td>
+        <td class="rsi-val">56.33</td>
+        <td class="rsi-val">51.77</td>
+        <td class="macd-val">38.90</td>
+        <td class="macd-val">22.14</td>
+        <td class="volume">488,320</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kospi">KOSPI</span></td>
+        <td class="ticker">035420</td>
+        <td class="name"><span class="gc-dot"></span>NAVER</td>
+        <td class="signal-date">2026-04-25</td>
+        <td class="price">215,000</td>
+        <td class="rsi-val">50.07</td>
+        <td class="rsi-val">47.33</td>
+        <td class="macd-val">410.88</td>
+        <td class="macd-val">320.11</td>
+        <td class="volume">2,887,640</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kosdaq">KOSDAQ</span></td>
+        <td class="ticker">112040</td>
+        <td class="name"><span class="gc-dot"></span>위메이드</td>
+        <td class="signal-date">2026-04-25</td>
+        <td class="price">43,650</td>
+        <td class="rsi-val">47.22</td>
+        <td class="rsi-val">43.55</td>
+        <td class="macd-val">-55.20</td>
+        <td class="macd-val">-98.44</td>
+        <td class="volume">731,204</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kosdaq">KOSDAQ</span></td>
+        <td class="ticker">041510</td>
+        <td class="name"><span class="gc-dot"></span>에스엠</td>
+        <td class="signal-date">2026-04-25</td>
+        <td class="price">72,100</td>
+        <td class="rsi-val">45.91</td>
+        <td class="rsi-val">42.10</td>
+        <td class="macd-val">-102.33</td>
+        <td class="macd-val">-178.09</td>
+        <td class="volume">623,887</td>
+      </tr>
+      <tr>
+        <td><span class="market-badge kospi">KOSPI</span></td>
+        <td class="ticker">068270</td>
+        <td class="name"><span class="gc-dot"></span>셀트리온</td>
+        <td class="signal-date">2026-04-18</td>
+        <td class="price">178,300</td>
+        <td class="rsi-val">52.44</td>
+        <td class="rsi-val">49.21</td>
+        <td class="macd-val">530.10</td>
+        <td class="macd-val">411.87</td>
+        <td class="volume">1,784,320</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 페이지네이션 -->
+<div class="pagination">
+  <span>10 / 18 종목 표시</span>
+  <button class="active">1</button>
+  <button>2</button>
+  <button>→</button>
+</div>
+
+<footer>
+  ※ 본 자료는 투자 참고용이며 투자 결과에 대한 책임은 투자자 본인에게 있습니다. &nbsp;|&nbsp; 데이터 출처: KRX (pykrx)
+</footer>
+
+</body>
+</html>
