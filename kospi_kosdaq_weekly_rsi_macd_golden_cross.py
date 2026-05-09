@@ -179,3 +179,6 @@ else:
     file_name = "kospi_kosdaq_weekly_rsi_macd_golden_cross.xlsx"
     result_df.to_excel(file_name, index=False)
     print(f"\n저장 완료: {file_name}")
+
+    from google.colab import files
+    files.download(file_name)
